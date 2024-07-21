@@ -20,8 +20,14 @@ end
 function checkFuel()
   if turtle.getFuelLevel() <= fuelThreshold then
     turtle.select(fuelSlot)
-    turtle.refuel(10)
+    if turtle.refuel(10) then
+      print("[*] Refueled successfully.")
+    else
+      print("[!] Failed to refuel. Halting operation.")
+      return false
+    end
   end
+  return true
 end
 
 function getRandomDirection()
@@ -30,10 +36,14 @@ end
 
 -- Scan surroundings for blocks within a radius of 20
 function scanSurroundings()
-  local scanner = peripheral.find("universal_scanner") --this will work I tjink
+  local scanner = peripheral.find("universal_scanner")
+  if not scanner then
+    print("[!] Universal scanner not found.")
+    return nil
+  end
   local blocks = scanner.scan("block", 16)
   local blockMap = {}
-  for _, block in ipairs(blocks) do
+  for i, block in ipairs(blocks) do
     blockMap[block.x .. ',' .. block.y .. ',' .. block.z] = true
     if i % 10 == 0 then -- Yield every 10 iterations
       os.sleep(0)
@@ -44,18 +54,21 @@ end
 
 function getNeighbors(node, blockMap)
   local neighbors = {}
-  for _, dir in ipairs({'up', 'down', 'north', 'south', 'east', 'west'}) do
-    local dx, dy, dz = 0, 0, 0
-    if dir == 'up' then dy = 1 elseif dir == 'down' then dy = -1
-    elseif dir == 'north' then dz = -1 elseif dir == 'south' then dz = 1
-    elseif dir == 'east' then dx = 1 elseif dir == 'west' then dx = -1 end
-
-    if not blockMap[(node.x + dx) .. ',' .. (node.y + dy) .. ',' .. (node.z + dz)] then
-      local neighbor = {
-        x = node.x + dx,
-        y = node.y + dy,
-        z = node.z + dz
-      }
+  local directions = {
+    {dx = 0, dy = 1, dz = 0},  -- up
+    {dx = 0, dy = -1, dz = 0}, -- down
+    {dx = 0, dy = 0, dz = -1}, -- north
+    {dx = 0, dy = 0, dz = 1},  -- south
+    {dx = 1, dy = 0, dz = 0},  -- east
+    {dx = -1, dy = 0, dz = 0}  -- west
+  }
+  for _, dir in ipairs(directions) do
+    local neighbor = {
+      x = node.x + dir.dx,
+      y = node.y + dir.dy,
+      z = node.z + dir.dz
+    }
+    if not blockMap[neighbor.x .. ',' .. neighbor.y .. ',' .. neighbor.z] then
       table.insert(neighbors, neighbor)
     end
   end
@@ -128,34 +141,90 @@ function aStar(start, goal, blockMap)
   return nil -- No path found
 end
 
+function turnTo(targetDirection)
+  local currentDirection = getCurrentDirection() -- You need to implement this based on your orientation tracking
+  local turnRightTimes = (targetDirection - currentDirection + 4) % 4
+  for i = 1, turnRightTimes do
+      turtle.turnRight()
+  end
+end
+
+function goTo(targetX, targetY, targetZ)
+  local currentX, currentY, currentZ = gps.locate()
+  -- Move vertically first
+  while currentY < targetY do
+      turtle.up()
+      currentY = currentY + 1
+  end
+  while currentY > targetY do
+      turtle.down()
+      currentY = currentY - 1
+  end
+  -- Move horizontally
+  while currentX ~= targetX or currentZ ~= targetZ do
+      if currentX < targetX then
+          turnTo(1) -- Assuming 0 is north, 1 is east, 2 is south, 3 is west
+          turtle.forward()
+          currentX = currentX + 1
+      elseif currentX > targetX then
+          turnTo(3)
+          turtle.forward()
+          currentX = currentX - 1
+      end
+      if currentZ < targetZ then
+          turnTo(0)
+          turtle.forward()
+          currentZ = currentZ + 1
+      elseif currentZ > targetZ then
+          turnTo(2)
+          turtle.forward()
+          currentZ = currentZ - 1
+      end
+  end
+end
+
 -- Open modem
 local modem = peripheral.find("modem") or peripheral.find("modem_1")
-rednet.open(modem)
+if modem then
+  rednet.open(modem)
+end
 if rednet.isOpen(modem) then
   print("[*] Modem is ready, waiting for master.")
   print("[*] My computer ID: " .. tostring(os.getComputerID()))
 
   while true do
-    checkFuel()
+    if not checkFuel() then break end
 
-    senderId, message, protocol = rednet.receive(receiveProtocol)
-    masterLocation = split(message)
-    masterPos = vector.new(masterLocation[1], masterLocation[2], masterLocation[3])
+    local senderId, message, protocol = rednet.receive(receiveProtocol, 60)
+    if not senderId then
+      print("[!] No message received. Retrying...")
+      os.sleep(1)
+      goto continue
+    end
 
-    mePos = vector.new(gps.locate())
+    local masterLocation = split(message)
+    local masterPos = vector.new(masterLocation[1], masterLocation[2], masterLocation[3])
 
-    goal = {
+    local mePos = vector.new(gps.locate())
+
+    local goal = {
       x = masterPos.x + getRandomDirection(),
       y = masterPos.y,
       z = masterPos.z + getRandomDirection()
     }
 
-    blockMap = scanSurroundings()
-    path = aStar({x = mePos.x, y = mePos.y, z = mePos.z}, goal, blockMap)
+    local blockMap = scanSurroundings()
+    if not blockMap then
+      print("[!] Failed to scan surroundings. Retrying...")
+      os.sleep(1)
+      goto continue
+    end
+
+    local path = aStar({x = mePos.x, y = mePos.y, z = mePos.z}, goal, blockMap)
 
     if path then
       for _, step in ipairs(path) do
-        turtle.goTo(step.x, step.y, step.z)
+        goTo(step.x, step.y, step.z)
       end
 
       local scanner = peripheral.wrap("universal_scanner")
@@ -169,12 +238,12 @@ if rednet.isOpen(modem) then
             peripheral.call("plethora:laser", "fire", yaw, pitch, potency)
           end
         end
-        sleep(0.5)  -- Adjust this interval based on how frequently you want to re-scan
+        os.sleep(0.5)  -- Adjust this interval based on how frequently you want to re-scan
       end
     else
       print("No path found to the goal.")
     end
+
+    ::continue::
   end
-
 end
-
