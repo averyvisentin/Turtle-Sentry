@@ -35,6 +35,9 @@ function scanSurroundings()
   local blockMap = {}
   for _, block in ipairs(blocks) do
     blockMap[block.x .. ',' .. block.y .. ',' .. block.z] = true
+    if i % 10 == 0 then -- Yield every 10 iterations
+      os.sleep(0)
+    end
   end
   return blockMap
 end
@@ -172,4 +175,6 @@ if rednet.isOpen(modem) then
       print("No path found to the goal.")
     end
   end
+
 end
+
