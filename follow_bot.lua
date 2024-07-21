@@ -30,7 +30,7 @@ end
 
 -- Scan surroundings for blocks within a radius of 20
 function scanSurroundings()
-  local scanner = peripheral.wrap("left")
+  local scanner = peripheral.find("universal_scanner") --this will work I tjink
   local blocks = scanner.scan("block", 16)
   local blockMap = {}
   for _, block in ipairs(blocks) do
@@ -126,13 +126,9 @@ function aStar(start, goal, blockMap)
 end
 
 -- Open modem
-modemSide = ...
-if isEmpty(modemSide) then
-  modemSide = "right"
-end
-rednet.open(modemSide)
-
-if rednet.isOpen(modemSide) then
+local modem = peripheral.find("modem") or peripheral.find("modem_1")
+rednet.open(modem)
+if rednet.isOpen(modem) then
   print("[*] Modem is ready, waiting for master.")
   print("[*] My computer ID: " .. tostring(os.getComputerID()))
 
@@ -159,9 +155,9 @@ if rednet.isOpen(modemSide) then
         turtle.goTo(step.x, step.y, step.z)
       end
 
-      local scanner = peripheral.wrap("left")
+      local scanner = peripheral.wrap("universal_scanner")
       while true do
-        local entities = scanner.scan("entity", 20)
+        local entities = scanner.scan("entity", 16)
         for _, entity in pairs(entities) do
           if entity.type ~= "player" then
             local yaw = math.deg(math.atan2(entity.z - mePos.z, entity.x - mePos.x))
