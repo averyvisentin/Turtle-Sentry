@@ -36,17 +36,17 @@ end
 
 -- Scan surroundings for blocks within a radius of 20
 function scanSurroundings()
-  local scanner = peripheral.find("universal_scanner")
+  local scanner = peripheral.wrap("universal_scanner")
   if not scanner then
     print("[!] Universal scanner not found.")
     return nil
   end
-  local blocks = scanner.scan("block", 16)
+  local blocks = scanner.scan("block", 8)
   local blockMap = {}
   for i, block in ipairs(blocks) do
     blockMap[block.x .. ',' .. block.y .. ',' .. block.z] = true
     if i % 10 == 0 then -- Yield every 10 iterations
-      os.sleep(0)
+      os.sleep(0.5)
     end
   end
   return blockMap
@@ -184,17 +184,15 @@ function goTo(targetX, targetY, targetZ)
 end
 
 -- Open modem
-local modem = peripheral.find("modem") or peripheral.find("modem_1")
+local modem = peripheral.find("modem") or peripheral.wrap("modem")
 if modem then
-  rednet.open(modem)
+  rednet.open("modem")
 end
-if rednet.isOpen(modem) then
+if rednet.isOpen("modem") then
   print("[*] Modem is ready, waiting for master.")
   print("[*] My computer ID: " .. tostring(os.getComputerID()))
 
   while true do
-    if not checkFuel() then break end
-
     local senderId, message, protocol = rednet.receive(receiveProtocol, 60)
     if not senderId then
       print("[!] No message received. Retrying...")
